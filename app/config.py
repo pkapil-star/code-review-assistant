@@ -30,7 +30,21 @@ class Settings(BaseSettings):
     queue_max_retries: int = 3
     queue_workers: int = 2
 
+    # Dashboard. The Vite dev server runs on its own origin, so it needs CORS;
+    # the built frontend is served by this app and does not.
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    frontend_dist: str = "frontend/dist"
+
+    # Fill an empty store with example reviews so the dashboard has something to
+    # show before a real installation produces any. Records created this way are
+    # flagged, and the UI labels them. Turn it off in production.
+    demo_data: bool = True
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
 
 settings = Settings()

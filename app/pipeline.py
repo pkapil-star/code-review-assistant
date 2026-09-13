@@ -11,6 +11,7 @@ Steps, in order:
 from __future__ import annotations
 
 import logging
+import time
 
 from app.ai.providers import LLMProvider
 from app.ai.reviewer import review_with_ai
@@ -21,6 +22,8 @@ from app.github.client import GitHubClient
 from app.models.events import PullRequestEvent
 from app.models.review import ReviewComment, ReviewResult
 from app.queue.jobs import ReviewJob
+from app.store.memory import get_store
+from app.store.records import PullRequestRecord, ReviewStatus, record_from_result
 
 logger = logging.getLogger(__name__)
 
@@ -163,11 +166,60 @@ async def review_pull_request(
     return result
 
 
+def record_id_for(event: PullRequestEvent) -> str:
+    """Stable id for the dashboard record of one pull request.
+
+    Re-reviewing the same pull request after a push must update the record the
+    dashboard already shows, not add a second row for the same number.
+    """
+    return f"{event.owner}__{event.repo}__{event.pr_number}"
+
+
+async def mark_reviewing(event: PullRequestEvent) -> None:
+    """Put a placeholder in the store so the dashboard shows work in progress."""
+    store = get_store()
+    record_id = record_id_for(event)
+    existing = store.get_pull_request(record_id)
+
+    if existing is not None:
+        await store.update_pull_request(
+            record_id, status=ReviewStatus.REVIEWING, head_sha=event.head_sha, error=None
+        )
+        return
+
+    await store.put_pull_request(
+        PullRequestRecord(
+            id=record_id,
+            number=event.pr_number,
+            title=event.title,
+            repository=event.full_name,
+            head_sha=event.head_sha,
+            html_url=f"https://github.com/{event.full_name}/pull/{event.pr_number}",
+            status=ReviewStatus.REVIEWING,
+        )
+    )
+
+
+async def record_outcome(
+    event: PullRequestEvent, result: ReviewResult, duration_seconds: float
+) -> None:
+    """Project a finished review into the store the dashboard reads."""
+    record = record_from_result(
+        result,
+        record_id=record_id_for(event),
+        title=event.title,
+        head_sha=event.head_sha,
+        duration_seconds=round(duration_seconds, 1),
+    )
+    await get_store().put_pull_request(record)
+
+
 async def handle_review_job(job: ReviewJob) -> ReviewResult:
     """Queue entry point: authenticate for the installation, then review.
 
-    Exceptions propagate on purpose. The queue catches them, counts the attempt,
-    and retries with backoff.
+    The result is projected into the review store on the way out so the
+    dashboard can show it. A failure is recorded too, then re-raised: the queue
+    catches it, counts the attempt, and retries with backoff.
     """
     event = job.event
 
@@ -176,9 +228,20 @@ async def handle_review_job(job: ReviewJob) -> ReviewResult:
             f"Event for {job.description} has no installation id, so the app cannot authenticate."
         )
 
+    await mark_reviewing(event)
+    started = time.monotonic()
+
     client = await GitHubClient.for_installation(event.installation_id)
 
     try:
-        return await review_pull_request(event, client)
+        result = await review_pull_request(event, client)
+    except Exception as exc:  # noqa: BLE001 - recorded for the dashboard, then re-raised
+        await get_store().update_pull_request(
+            record_id_for(event), status=ReviewStatus.FAILED, error=str(exc)
+        )
+        raise
     finally:
         await client.aclose()
+
+    await record_outcome(event, result, time.monotonic() - started)
+    return result
