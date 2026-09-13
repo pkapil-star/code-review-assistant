@@ -1,0 +1,178 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Design tokens.
+ *
+ * Every colour in the application resolves to one of these roles. Changing the
+ * product's look means editing this block, not hunting through components.
+ * Values are space-separated RGB channels so Tailwind can apply opacity.
+ */
+:root,
+[data-theme='dark'] {
+  --canvas: 9 14 24; /* the application shell */
+  --surface: 16 24 39; /* panels and cards */
+  --raised: 22 32 51; /* hovered rows, nested panels */
+  --sunken: 6 10 18; /* code blocks, wells */
+  --line: 33 46 70;
+  --line-strong: 51 68 99;
+
+  --ink: 232 238 248;
+  --ink-soft: 176 190 213;
+  --ink-muted: 132 149 176; /* 5.1:1 on --canvas, readable from a projector */
+
+  --accent: 76 139 245;
+  --accent-soft: 24 47 92;
+  --accent-ink: 255 255 255;
+
+  --success: 63 185 108;
+  --warning: 224 168 51;
+  --critical: 240 100 92;
+  --info: 125 160 200;
+
+  color-scheme: dark;
+}
+
+[data-theme='light'] {
+  --canvas: 244 246 250;
+  --surface: 255 255 255;
+  --raised: 247 249 252;
+  --sunken: 240 243 248;
+  --line: 219 226 236;
+  --line-strong: 190 201 216;
+
+  --ink: 15 23 38;
+  --ink-soft: 55 70 95;
+  --ink-muted: 90 105 130;
+
+  --accent: 32 91 207;
+  --accent-soft: 225 235 253;
+  --accent-ink: 255 255 255;
+
+  --success: 26 128 71;
+  --warning: 158 106 12;
+  --critical: 196 44 42;
+  --info: 68 100 145;
+
+  color-scheme: light;
+}
+
+@layer base {
+  * {
+    border-color: rgb(var(--line));
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-canvas text-ink font-sans text-base;
+    margin: 0;
+    min-height: 100vh;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply text-ink;
+    letter-spacing: -0.018em;
+    font-weight: 650;
+  }
+
+  /* One visible focus treatment everywhere, so keyboard use is never guesswork. */
+  :focus-visible {
+    outline: 2px solid rgb(var(--accent));
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background: rgb(var(--accent) / 0.3);
+  }
+
+  /* Scrollbars that read as part of the product rather than the OS. */
+  ::-webkit-scrollbar {
+    width: 11px;
+    height: 11px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgb(var(--line-strong));
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--ink-muted));
+    background-clip: content-box;
+    border: 3px solid transparent;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply rounded-lg border border-line bg-surface shadow-panel;
+  }
+
+  .hairline {
+    @apply border-b border-line;
+  }
+
+  /* Numbers a professor has to read from the back of the room. */
+  .stat-figure {
+    @apply font-mono text-4xl font-semibold tabular-nums tracking-tight;
+  }
+
+  .label-caps {
+    @apply text-xs font-semibold uppercase tracking-[0.11em] text-ink-muted;
+  }
+
+  .link-quiet {
+    @apply text-ink-soft underline-offset-4 transition-colors hover:text-ink hover:underline;
+  }
+}
+
+@layer utilities {
+  .grid-backdrop {
+    background-image:
+      linear-gradient(to right, rgb(var(--line) / 0.5) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(var(--line) / 0.5) 1px, transparent 1px);
+    background-size: 64px 64px;
+  }
+
+  .skeleton {
+    @apply relative overflow-hidden rounded bg-raised;
+  }
+
+  .skeleton::after {
+    @apply absolute inset-0;
+    content: '';
+    transform: translateX(-100%);
+    background-image: linear-gradient(
+      90deg,
+      transparent,
+      rgb(var(--line-strong) / 0.45),
+      transparent
+    );
+    animation: shimmer 1.5s infinite;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

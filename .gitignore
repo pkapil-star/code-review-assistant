@@ -7,3 +7,5 @@ secrets/
 # Added by code-review-graph
 .code-review-graph/
 .vercel
+node_modules/
+frontend/dist/
