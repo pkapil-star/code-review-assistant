@@ -18,6 +18,8 @@ class PullRequestEvent(BaseModel):
     installation_id: int | None = None
     title: str = ""
     draft: bool = False
+    author: str = ""
+    author_avatar: str | None = None
 
     @property
     def full_name(self) -> str:
@@ -55,6 +57,7 @@ def parse_pull_request_event(payload: dict) -> PullRequestEvent:
         raise UnsupportedEventError("payload is missing pull request number or head sha")
 
     installation = payload.get("installation") or {}
+    user = pull_request.get("user") or {}
 
     return PullRequestEvent(
         action=payload.get("action", ""),
@@ -65,4 +68,6 @@ def parse_pull_request_event(payload: dict) -> PullRequestEvent:
         installation_id=installation.get("id"),
         title=pull_request.get("title", "") or "",
         draft=bool(pull_request.get("draft", False)),
+        author=user.get("login", "") or "",
+        author_avatar=user.get("avatar_url"),
     )

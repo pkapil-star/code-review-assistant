@@ -3,5 +3,10 @@ __pycache__/
 *.pyc
 .env
 .pytest_cache/
-secrets/node_modules/
+secrets/
+# Added by code-review-graph
+.code-review-graph/
+.vercel
+node_modules/
 frontend/dist/
+.claude/

@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     github_app_id: str = ""
     github_webhook_secret: str = ""
     github_private_key_path: str = ""
+    github_private_key: str = ""
     github_api_url: str = "https://api.github.com"
 
     # AI review layer.

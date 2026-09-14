@@ -3,7 +3,7 @@ import logging
 from fastapi import APIRouter, Header, HTTPException, Request, status
 
 from app.models.events import UnsupportedEventError, parse_pull_request_event
-from app.queue.instance import get_review_queue
+from app.pipeline import handle_review_job
 from app.queue.jobs import ReviewJob
 from app.security.webhook import verify_webhook_signature
 
@@ -53,11 +53,21 @@ async def github_webhook(
         logger.info("Skipping %s: %s", event.full_name, reason)
         return {"status": "ignored", "event": x_github_event, "reason": reason}
 
-    job = await get_review_queue().enqueue(ReviewJob(event=event))
+    # Run the review inline rather than handing it to the background queue.
+    # A serverless deployment (Vercel, etc.) recycles the process as soon as
+    # this handler returns, which kills an in-flight background task before
+    # it finishes. GitHub allows ~10s before it considers the delivery slow,
+    # which is enough for the static + mock-AI path this deployment runs.
+    try:
+        result = await handle_review_job(ReviewJob(event=event))
+    except Exception as exc:  # noqa: BLE001 - surfaced to the caller, already recorded for the dashboard
+        logger.exception("Review failed for %s#%s", event.full_name, event.pr_number)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
     return {
-        "status": "queued",
+        "status": "completed",
         "event": x_github_event,
-        "job_id": job.job_id,
         "pull_request": f"{event.full_name}#{event.pr_number}",
+        "posted": result.posted,
+        "comments": len(result.comments),
     }

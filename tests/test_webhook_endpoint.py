@@ -6,6 +6,8 @@ from fastapi.testclient import TestClient
 
 from app.config import settings
 from app.main import app
+from app.models.review import ReviewResult
+from app.routers import webhooks
 from tests.conftest import pull_request_payload, sign
 
 client = TestClient(app)
@@ -34,17 +36,30 @@ def test_webhook_rejects_invalid_signature():
 
 
 def test_webhook_queues_pull_request(monkeypatch, recording_queue):
-    """A valid opened pull request becomes exactly one queued job."""
+    """A valid opened pull request runs the review pipeline inline and reports the outcome.
+
+    The pipeline itself (GitHub auth, static analysis, AI, posting) is exercised
+    by tests/test_pipeline.py; this test only checks the webhook handler wires
+    the parsed event through to it and shapes the response.
+    """
     monkeypatch.setattr(settings, "github_webhook_secret", SECRET)
+
+    captured_jobs = []
+
+    async def fake_handle_review_job(job):
+        captured_jobs.append(job)
+        return ReviewResult(owner=job.event.owner, repo=job.event.repo, pr_number=job.event.pr_number)
+
+    monkeypatch.setattr(webhooks, "handle_review_job", fake_handle_review_job)
 
     response = post_event(pull_request_payload())
 
     assert response.status_code == 200
-    assert response.json()["status"] == "queued"
+    assert response.json()["status"] == "completed"
     assert response.json()["pull_request"] == "octocat/hello-world#7"
 
-    assert len(recording_queue.jobs) == 1
-    job = recording_queue.jobs[0]
+    assert len(captured_jobs) == 1
+    job = captured_jobs[0]
     assert job.event.owner == "octocat"
     assert job.event.pr_number == 7
     assert job.event.installation_id == 12345

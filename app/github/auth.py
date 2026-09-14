@@ -42,13 +42,22 @@ class InstallationToken:
 
 
 def read_private_key(path: str | None = None) -> str:
-    """Load the PEM private key that GitHub generated for this app."""
+    """Load the PEM private key that GitHub generated for this app.
+
+    Prefers GITHUB_PRIVATE_KEY (the raw PEM contents, set directly as an env
+    var) over GITHUB_PRIVATE_KEY_PATH, since a serverless deployment has no
+    writable filesystem to hold a checked-out secrets/ directory.
+    """
+    if settings.github_private_key.strip():
+        return settings.github_private_key.replace("\\n", "\n")
+
     key_path = Path(path or settings.github_private_key_path)
 
     if not key_path.is_file():
         raise GitHubAuthError(
             f"GitHub App private key not found at {key_path}. "
-            "Download it from the app settings page and set GITHUB_PRIVATE_KEY_PATH."
+            "Download it from the app settings page and set GITHUB_PRIVATE_KEY_PATH, "
+            "or set GITHUB_PRIVATE_KEY to the PEM contents directly."
         )
 
     return key_path.read_text(encoding="utf-8")

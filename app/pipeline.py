@@ -196,6 +196,8 @@ async def mark_reviewing(event: PullRequestEvent) -> None:
             head_sha=event.head_sha,
             html_url=f"https://github.com/{event.full_name}/pull/{event.pr_number}",
             status=ReviewStatus.REVIEWING,
+            author=event.author,
+            author_avatar=event.author_avatar,
         )
     )
 
@@ -208,6 +210,7 @@ async def record_outcome(
         result,
         record_id=record_id_for(event),
         title=event.title,
+        author=event.author,
         head_sha=event.head_sha,
         duration_seconds=round(duration_seconds, 1),
     )
