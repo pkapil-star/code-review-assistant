@@ -1,0 +1,122 @@
+DEVELOPMENT JOURNAL
+Automated Code Review Assistant (ReviewPilot)
+====================================================
+
+2026-09-14
+
+00:20 - Problem: Local server wouldn't start.
+  `uvicorn app.main:app --reload` failed with
+  "[WinError 10013] An attempt was made to access a socket in a way
+  forbidden by its access permissions" on port 8000.
+  Resolution: Ran on a different port (8001) instead. Windows was
+  blocking 8000 (firewall/AV), not a code issue.
+
+00:35 - Problem: Vercel deploy failed on project creation.
+  Error: "Project names can be up to 100 characters long and must be
+  lowercase..." Vercel infers the project name from the folder name,
+  and the folder had a capital letter.
+  Resolution: Passed an explicit lowercase name via `--name`.
+
+00:40 - Problem: Vercel build failed parsing requirements.txt.
+  Error: "could not parse requirements.txt: Unexpected '<garbled char>'".
+  Root cause: the file was saved as UTF-16LE instead of UTF-8/ASCII,
+  so every character had a null byte between it.
+  Resolution: Rewrote the file in plain UTF-8.
+
+00:45 - Problem: Deployed site showed only a bare JSON status response,
+  no dashboard UI.
+  Root cause: the full frontend (React/Vite dashboard) had been built
+  on a separate branch (claude/code-review-assistant-d6aa2c) in an
+  earlier session and never merged into master.
+  Resolution: Merged that branch into master, resolving conflicts in
+  .gitignore and requirements.txt (kept the fuller dependency list
+  from the branch, which included anthropic/PyJWT/cryptography that
+  master's requirements.txt was missing).
+
+00:50 - Problem: `git push` to GitHub was rejected.
+  Error: "GH013: Repository rule violations... Push cannot contain
+  secrets... Stripe API Key" found in app/store/demo.py.
+  Root cause: demo/seed data included a realistic-looking fake Stripe
+  key as example finding text, which GitHub's secret scanner flagged
+  as a real credential.
+  Resolution: Used GitHub's "It's used in tests" / allow-secret flow
+  since it was fabricated demo content, not a real key.
+
+01:00 - Problem: Frontend built locally but deployed dashboard was still
+  the old build.
+  Resolution: Ran `npm install && npm run build` in frontend/, added
+  `includeFiles` to vercel.json so the Vercel Python function bundles
+  frontend/dist, and added a .vercelignore that doesn't exclude
+  frontend/dist (it was covered by .gitignore, which Vercel respects
+  by default when no .vercelignore is present).
+
+10:40 - Task: Connect a real GitHub App instead of demo data.
+  Problem: The GitHub App's private key lived at secrets/private-key.pem,
+  which is gitignored and therefore never reaches the Vercel deployment
+  (serverless has no writable filesystem for a checked-out secrets dir).
+  Resolution: Added support for a GITHUB_PRIVATE_KEY environment
+  variable (raw PEM contents) as an alternative to the file-path
+  setting, and pushed the key/app id/webhook secret to Vercel as env
+  vars directly via `vercel env add`, piping values in so they were
+  never printed in chat.
+
+10:52 - Problem: First webhook delivery to the new production URL
+  failed with HTTP 401.
+  Root cause: GitHub's webhook Secret field was left blank when saving
+  the new URL, which cleared the existing secret instead of preserving
+  it, so GitHub's signature no longer matched what the server expected.
+  Resolution: Generated a new random secret, set it in both the GitHub
+  App settings and the Vercel env var, redeployed.
+
+10:57 - Problem: Even after the secret was fixed, no pull_request events
+  were being delivered at all (only installation events showed up).
+  Root cause: two separate misconfigurations found in sequence -
+  (1) the "Pull requests" event wasn't checked under Subscribe to
+  events, and (2) after fixing that, the app's repository access was
+  still scoped to an old selection that didn't include this repo.
+  Resolution: Checked "Pull requests" under Permissions & events, and
+  changed installation access to all repositories.
+
+11:02 - Problem: Webhook delivered successfully (200 OK) but the review
+  never completed - /stats showed the job stuck as "running" forever.
+  Root cause: Vercel's serverless functions get recycled as soon as
+  the HTTP response is sent, which kills the app's in-process
+  background queue worker before it can finish an async review job.
+  This only shows up under serverless hosting, not on a normal server.
+  Resolution: Rewrote the webhook handler to run the review pipeline
+  inline (awaited directly) instead of handing it to the background
+  queue, trading the queue's non-blocking design for actually
+  completing within GitHub's ~10s webhook timeout.
+
+11:05 - Problem: The inline review then failed outright with HTTP 502.
+  Root cause (found via Vercel function logs): PullRequestRecord
+  requires an `author` field, but PullRequestEvent - the model built
+  from the incoming webhook payload - never captured the PR author in
+  the first place. Every single review job crashed on this validation
+  error before doing any work. This bug predated the serverless fix;
+  it's also why the earlier background-queue jobs never completed -
+  they were silently failing and retrying, not just getting killed.
+  Resolution: Added author/author_avatar fields to PullRequestEvent,
+  parsed them from the webhook's pull_request.user object, and wired
+  them through to both the "review started" and "review finished"
+  dashboard records. Fixed the one test this broke (it had assumed the
+  old fire-and-forget queue behavior) by mocking the pipeline call
+  instead of hitting the network in the test.
+
+11:15 - Verified end-to-end: opened a real pull request, GitHub
+  delivered the webhook, the app authenticated as the GitHub App,
+  ran static analysis, posted a review comment on the PR, and the
+  dashboard showed the real (non-demo) result with a computed score.
+
+Later - Problem: user asked for a UI theme change (monochrome), then
+  reported a blank page after deployment.
+  Investigation: server-side checks (curl on HTML, JS, CSS assets, the
+  API) all returned 200 with correct content-types, so the deploy
+  itself wasn't broken - this pointed to a client-side rendering issue,
+  not a build/deploy problem.
+  Resolution: reverted the theme change at the user's request before
+  root-causing the blank page further; a later screenshot showed the
+  dashboard rendering correctly, so the issue did not recur.
+
+====================================================
+Contributors: Pranshu, Preetpal, Sehapal
