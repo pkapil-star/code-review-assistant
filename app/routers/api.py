@@ -81,7 +81,7 @@ def _github_connected() -> bool:
     return bool(
         settings.github_app_id
         and settings.github_webhook_secret
-        and settings.github_private_key_path
+        and (settings.github_private_key or settings.github_private_key_path)
     )
 
 
@@ -94,7 +94,7 @@ def connection_status() -> ConnectionStatus:
         connected=_github_connected(),
         app_id_configured=bool(settings.github_app_id),
         webhook_secret_configured=bool(settings.github_webhook_secret),
-        private_key_configured=bool(settings.github_private_key_path),
+        private_key_configured=bool(settings.github_private_key or settings.github_private_key_path),
         ai_provider=settings.ai_provider,
         ai_configured=settings.ai_provider == "mock" or bool(settings.anthropic_api_key),
         post_comments=settings.post_comments,
@@ -122,7 +122,7 @@ def read_settings() -> SettingsView:
         github_api_url=settings.github_api_url,
         github_app_id_configured=bool(settings.github_app_id),
         github_webhook_secret_configured=bool(settings.github_webhook_secret),
-        github_private_key_configured=bool(settings.github_private_key_path),
+        github_private_key_configured=bool(settings.github_private_key or settings.github_private_key_path),
         anthropic_api_key_configured=bool(settings.anthropic_api_key),
         demo_data=get_store().seeded_with_demo_data,
     )
